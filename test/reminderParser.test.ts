@@ -86,4 +86,30 @@ describe("Reminder Parser", () => {
     const diffMs = new Date(result.remindAtUtcIso).getTime() - baseTime.getTime();
     expect(diffMs).toBe(30 * 60 * 1000);
   });
+
+  it("should parse 'В 11.30, напомни, провести собрание.' at night and schedule for tomorrow 11:30", () => {
+    // 2026-10-08 23:08:00 (night) in Asia/Almaty (18:08 UTC)
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("В 11.30, напомни, провести собрание.", nightTime, timeZone);
+    expect(result.description).toBe("Провести собрание");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9); // Tomorrow!
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
+
+  it("should parse phonetic STT 'В 11-30, напомни, провесли с обраньям.' and schedule for tomorrow 11:30", () => {
+    // 2026-10-08 23:08:00 (night) in Asia/Almaty (18:08 UTC)
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("В 11-30, напомни, провесли с обраньям.", nightTime, timeZone);
+    expect(result.description).toBe("Провести собрание");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9); // Tomorrow!
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
 });
