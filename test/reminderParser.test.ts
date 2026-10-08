@@ -146,4 +146,40 @@ describe("Reminder Parser", () => {
     const result = parseReminderText("купит продукты", baseTime, timeZone);
     expect(result.description).toBe("Купить продукты");
   });
+
+  it("should parse 4-digit time and speech slips: '1130 провести сопрания по уценке бродажей'", () => {
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("1130 провести сопрания по уценке бродажей", nightTime, timeZone);
+    expect(result.description).toBe("Провести собрание по уценке продаж");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9);
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
+
+  it("should parse time without 'в': '11:30 провести собрание'", () => {
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("11:30 провести собрание", nightTime, timeZone);
+    expect(result.description).toBe("Провести собрание");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9);
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
+
+  it("should parse space-separated time without 'в': '11 30 напомни провести собрание'", () => {
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("11 30 напомни провести собрание", nightTime, timeZone);
+    expect(result.description).toBe("Провести собрание");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9);
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
 });
