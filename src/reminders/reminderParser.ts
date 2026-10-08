@@ -6,6 +6,29 @@ import {
 } from "../utils/dates";
 
 /**
+ * Normalizes speech recognition text, fixing phonetic errors, time formatting, and fillers.
+ */
+export function cleanAndNormalizeText(raw: string): string {
+  let text = raw.trim();
+  if (!text) return "";
+
+  // 1. Normalize time separators: 11-30 -> 11:30, 11—30 -> 11:30
+  text = text.replace(/(\d{1,2})[-—](\d{2})/g, "$1:$2");
+
+  // 2. Normalize "в 11 30" -> "в 11:30"
+  text = text.replace(/(?:^|[^а-яёa-z0-9])в\s+(\d{1,2})\s+(\d{2})(?=[^а-яёa-z0-9]|$)/gi, " в $1:$2 ");
+
+  // 3. Phonetic slips from speech-to-text
+  text = text.replace(/провесли\s+(?:с\s*)?обрань[яе]м?/gi, "провести собрание");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])с\s+обрань[яе]м?(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])провесли(?=[^а-яёa-z0-9]|$)/gi, " провести ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])созвонится(?=[^а-яёa-z0-9]|$)/gi, " созвониться ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])сб(?=[^а-яёa-z0-9]|$)/gi, " СБ ");
+
+  return text;
+}
+
+/**
  * Parses user reminder text in Russian, extracting the description and the target remind_at timestamp.
  * Time calculations are anchored in the provided timezone (default Asia/Almaty).
  */
@@ -15,8 +38,8 @@ export function parseReminderText(
   timeZone: string = DEFAULT_TIMEZONE,
   defaultMinutes: number = 30
 ): ParseResult {
-  const trimmed = text.trim();
-  if (!trimmed) {
+  const normalized = cleanAndNormalizeText(text);
+  if (!normalized) {
     return {
       description: "",
       remindAtUtcIso: new Date(now.getTime() + defaultMinutes * 60000).toISOString(),
@@ -24,10 +47,7 @@ export function parseReminderText(
     };
   }
 
-  // Work with a lowercase copy for matching patterns
-  const lower = trimmed.toLowerCase();
-
-  // Date parts in local timezone
+  const lower = normalized.toLowerCase();
   const localNow = getZonedParts(now, timeZone);
 
   let targetDate: Date | null = null;
@@ -36,7 +56,8 @@ export function parseReminderText(
   let matchedLength = 0;
 
   function parseTimeOfDay(timeFragment: string): { hour: number; minute: number } | null {
-    const hhmmMatch = timeFragment.match(/(\d{1,2})[:.](\d{2})/);
+    // Supports 11:30, 11.30, 11-30, 11 30
+    const hhmmMatch = timeFragment.match(/(\d{1,2})[:.\-—\s](\d{2})/);
     if (hhmmMatch) {
       let h = parseInt(hhmmMatch[1], 10);
       const m = parseInt(hhmmMatch[2], 10);
@@ -103,7 +124,7 @@ export function parseReminderText(
 
   // Pattern 2: (завтра | послезавтра | сегодня) [в HH:MM / в N утра / вечером / ...]
   if (!targetDate) {
-    const dayRegex = /(?:^|\s)((завтра|послезавтра|сегодня)(?:\s+(?:в\s+)?(\d{1,2}\s*(?:утра|вечера|дня|ночи)|[0-9]{1,2}(?:[:.][0-9]{2})?|утром|вечером|днём|днем))?)(?=$|\s|[.,!?;])/i;
+    const dayRegex = /(?:^|\s)((завтра|послезавтра|сегодня)(?:\s+(?:в\s+)?(\d{1,2}\s*(?:утра|вечера|дня|ночи)|[0-9]{1,2}(?:[:.\-—\s][0-9]{2})?|утром|вечером|днём|днем))?)(?=$|\s|[.,!?;])/i;
     const dayMatch = lower.match(dayRegex);
 
     if (dayMatch && dayMatch.index !== undefined) {
@@ -120,7 +141,7 @@ export function parseReminderText(
       if (dayKeyword === "завтра") daysToAdd = 1;
       else if (dayKeyword === "послезавтра") daysToAdd = 2;
 
-      let hour = 9; // Default 09:00 for tomorrow/after tomorrow
+      let hour = 9;
       let minute = 0;
 
       if (timePartStr) {
@@ -159,7 +180,7 @@ export function parseReminderText(
       субботу: 6,
       воскресенье: 0,
     };
-    const wdRegex = /(?:^|\s)(в(?:о)?\s+(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье)(?:\s+(?:в\s+)?(\d{1,2}\s*(?:утра|вечера|дня|ночи)|[0-9]{1,2}(?:[:.][0-9]{2})?|утром|вечером|днём|днем))?)(?=$|\s|[.,!?;])/i;
+    const wdRegex = /(?:^|\s)(в(?:о)?\s+(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье)(?:\s+(?:в\s+)?(\d{1,2}\s*(?:утра|вечера|дня|ночи)|[0-9]{1,2}(?:[:.\-—\s][0-9]{2})?|утром|вечером|днём|днем))?)(?=$|\s|[.,!?;])/i;
     const wdMatch = lower.match(wdRegex);
 
     if (wdMatch && wdMatch.index !== undefined) {
@@ -201,9 +222,9 @@ export function parseReminderText(
     }
   }
 
-  // Pattern 4: "в 18:00", "в 10 утра", "в 9 вечера"
+  // Pattern 4: "в 11:30", "в 11.30", "в 11-30", "в 18:00", "в 10 утра"
   if (!targetDate) {
-    const timeOnlyRegex = /(?:^|\s)(в\s+([0-9]{1,2}[:.][0-9]{2}(?:\s*(?:утра|вечера|дня|ночи))?|\d{1,2}\s*(?:утра|вечера|дня|ночи)))(?=$|\s|[.,!?;])/i;
+    const timeOnlyRegex = /(?:^|\s)(в\s+([0-9]{1,2}[:.\-—\s][0-9]{2}(?:\s*(?:утра|вечера|дня|ночи))?|\d{1,2}\s*(?:утра|вечера|дня|ночи)))(?=$|\s|[.,!?;])/i;
     const timeOnlyMatch = lower.match(timeOnlyRegex);
 
     if (timeOnlyMatch && timeOnlyMatch.index !== undefined) {
@@ -216,6 +237,7 @@ export function parseReminderText(
       const parsedT = parseTimeOfDay(timeOnlyMatch[2]);
       if (parsedT) {
         let dayOffset = 0;
+        // If specified time has already passed today, schedule for TOMORROW
         if (
           parsedT.hour < localNow.hour ||
           (parsedT.hour === localNow.hour && parsedT.minute <= localNow.minute)
@@ -239,35 +261,44 @@ export function parseReminderText(
   }
 
   // Clean description from text
-  let description = trimmed;
+  let description = normalized;
   let hasExplicitTime = false;
 
   if (targetDate && matchedIndex !== -1) {
     hasExplicitTime = true;
-    const before = trimmed.substring(0, matchedIndex);
-    const after = trimmed.substring(matchedIndex + matchedLength);
+    const before = normalized.substring(0, matchedIndex);
+    const after = normalized.substring(matchedIndex + matchedLength);
     description = `${before} ${after}`.trim();
   } else {
     targetDate = new Date(now.getTime() + defaultMinutes * 60000);
     hasExplicitTime = false;
   }
 
-  // Clean common trigger phrases like "Напомни мне", "напомни", "напомнить"
+  // Clean filler words anywhere in sentence (e.g. "напомни", "напомнить", "пожалуйста")
   description = description
-    .replace(/^напомни(?:те)?\s*(?:мне\s*)?/i, "")
-    .replace(/^напомнить\s*(?:мне\s*)?/i, "")
-    .replace(/^пожалуйста\s*,?\s*/i, "")
-    .replace(/\s*,?\s*пожалуйста$/i, "")
+    .replace(/(?:^|[^а-яёa-z0-9])напомни(?:те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])напомнить(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])пожалуйста(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])плиз(?=[^а-яёa-z0-9]|$)/gi, " ");
+
+  // Strip dangling punctuation and conjunctions
+  description = description
+    .replace(/^[.,;:\s!?—–-]+/, "")
+    .replace(/[.,;:\s!?—–-]+$/, "")
     .trim();
 
-  // Strip dangling conjunctions or prepositions at start/end
   description = description
     .replace(/^(?:что|чтобы|о|об|про|в|на|через)\s+/i, "")
     .replace(/\s+(?:в|на|через)$/i, "")
     .trim();
 
+  description = description
+    .replace(/^[.,;:\s!?—–-]+/, "")
+    .replace(/[.,;:\s!?—–-]+$/, "")
+    .trim();
+
   if (!description) {
-    description = trimmed;
+    description = normalized;
   }
 
   // Capitalize first character
