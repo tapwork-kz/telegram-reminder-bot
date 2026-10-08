@@ -1,12 +1,12 @@
 import { RemindersRepository } from "../db/remindersRepository";
-import { parseReminderText } from "./reminderParser";
+import { parseReminderText, cleanAndNormalizeText } from "./reminderParser";
 import { transcribeAudio } from "../voice/transcription";
 import {
   formatForUser,
   getTomorrowAtHourIso,
   DEFAULT_TIMEZONE,
 } from "../utils/dates";
-import { Env, Reminder, ReminderSource } from "../types";
+import { Env, Reminder, ReminderSource, ReminderStatus } from "../types";
 import { getTimezone, getDefaultReminderMinutes } from "../config";
 import { logger } from "../utils/logger";
 
@@ -198,5 +198,82 @@ export class ReminderService {
 
   async getActiveReminders(userId: number): Promise<Reminder[]> {
     return await this.repo.getActiveForUser(userId);
+  }
+
+  /**
+   * Supplements an existing reminder with additional details or rescheduled time.
+   */
+  async supplementReminder(
+    reminder: Reminder,
+    additionRawText: string
+  ): Promise<{ reminder: Reminder; messageText: string }> {
+    const timeZone = getTimezone(this.env);
+    const now = new Date();
+
+    const normalizedAddition = cleanAndNormalizeText(additionRawText);
+    const parsedTime = parseReminderText(normalizedAddition, now, timeZone);
+
+    // If an explicit time is given in the reply (e.g. "вечером", "в 18:00", "завтра в 10:00"),
+    // use that time; otherwise preserve the original reminder time.
+    let targetRemindAtIso = reminder.remind_at;
+    let newStatus: ReminderStatus | undefined = undefined;
+
+    if (parsedTime.hasExplicitTime) {
+      targetRemindAtIso = parsedTime.remindAtUtcIso;
+      // If reminder was sent/snoozed, reschedule it
+      newStatus = "scheduled";
+    }
+
+    // Clean trigger words from addition text
+    let cleanAddition = normalizedAddition
+      .replace(/(?:^|[^а-яёa-z0-9])(?:поставь|поставьте|сделай|сделайте|добавь|добавьте|установи|установите|создай|создайте)\s+(?:мне\s+)?(?:напоминани[ея]|задачу)(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])(?:нужно|надо)\s+напомни(?:ть|те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])напоминани[ея](?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])напомни(?:те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])напомнить(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])не\s+забудь(?:те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])пожалуйста(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .replace(/(?:^|[^а-яёa-z0-9])плиз(?=[^а-яёa-z0-9]|$)/gi, " ")
+      .trim();
+
+    cleanAddition = cleanAddition
+      .replace(/^[.,;:\s!?—–-]+/, "")
+      .replace(/[.,;:\s!?—–-]+$/, "")
+      .trim();
+
+    const base = reminder.description.replace(/[.,;:\s!?—–-]+$/, "").trim();
+    let updatedDescription = base;
+
+    if (cleanAddition) {
+      if (!base.toLowerCase().includes(cleanAddition.toLowerCase())) {
+        updatedDescription = `${base} ${cleanAddition}`.trim();
+      }
+    }
+
+    // Capitalize first letter
+    updatedDescription =
+      updatedDescription.charAt(0).toUpperCase() + updatedDescription.slice(1);
+
+    const updated = await this.repo.supplement(
+      reminder.id,
+      updatedDescription,
+      targetRemindAtIso,
+      newStatus
+    );
+
+    const displayTime = formatForUser(targetRemindAtIso, now, timeZone);
+    const responseText = `✏️ Дополнено:\n${updated.description}\n⏰ ${displayTime}`;
+
+    logger.info("Reminder supplemented", {
+      reminder_id: reminder.id,
+      original_description: reminder.description,
+      new_description: updated.description,
+      remind_at: targetRemindAtIso,
+    });
+
+    return {
+      reminder: updated,
+      messageText: responseText,
+    };
   }
 }
