@@ -354,3 +354,38 @@ export function parseReminderText(
     isPast,
   };
 }
+
+/**
+ * Extracts reminder description from a bot message text.
+ * Bot messages usually have format:
+ * "🔔 Напоминание создано\n<description>\n⏰ <time>"
+ * or "🔔 Напоминание\n<description>\n⏰ <time>"
+ * or "✏️ Дополнено:\n<description>\n⏰ <time>"
+ */
+export function extractDescriptionFromBotMessage(text: string): string | null {
+  if (!text) return null;
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const bodyLines: string[] = [];
+
+  for (const line of lines) {
+    if (
+      line.startsWith("🔔") ||
+      line.startsWith("✏️") ||
+      line.startsWith("⏰") ||
+      line.startsWith("✅") ||
+      line.startsWith("❌") ||
+      line.startsWith("🎤") ||
+      line.startsWith("👋") ||
+      line.startsWith("⚠️")
+    ) {
+      continue;
+    }
+    bodyLines.push(line);
+  }
+
+  if (bodyLines.length > 0) {
+    return bodyLines.join(" ").trim();
+  }
+  return null;
+}
+
