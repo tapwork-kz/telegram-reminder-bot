@@ -1,0 +1,31 @@
+{
+  "name": "telegram-reminder-bot",
+  "version": "1.0.0",
+  "description": "Autonomous Telegram Reminder Bot powered by Cloudflare Workers, D1, Cron Triggers, and Workers AI",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "d1:migrate:local": "wrangler d1 execute telegram-reminder-db --local --file=./migrations/0001_initial_schema.sql",
+    "d1:migrate:remote": "wrangler d1 execute telegram-reminder-db --remote --file=./migrations/0001_initial_schema.sql"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "reminder",
+    "cloudflare-workers",
+    "cloudflare-d1",
+    "cron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2",
+    "wrangler": "^4.148.0"
+  }
+}
