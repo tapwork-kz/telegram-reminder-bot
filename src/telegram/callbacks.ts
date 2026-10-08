@@ -41,7 +41,7 @@ export class CallbackHandler {
 
       const updatedText = `✅ Выполнено\n${reminder.description}`;
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
-        reply_markup: null,
+        reply_markup: { inline_keyboard: [] },
       });
       return;
     }
@@ -60,7 +60,7 @@ export class CallbackHandler {
 
       const updatedText = `❌ Напоминание закрыто как неактуальное.\n${reminder.description}`;
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
-        reply_markup: null,
+        reply_markup: { inline_keyboard: [] },
       });
       return;
     }
@@ -116,7 +116,7 @@ export class CallbackHandler {
 
       const updatedText = `⏰ Отложено\n${reminder.description}\n⏰ ${displayTime}`;
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
-        reply_markup: null,
+        reply_markup: { inline_keyboard: [] },
       });
       return;
     }
