@@ -1,5 +1,6 @@
 import { Env } from "../types";
 import { logger } from "../utils/logger";
+import { cleanAndNormalizeText } from "../reminders/reminderParser";
 
 export interface TranscriptionResult {
   text: string;
@@ -12,7 +13,7 @@ export interface IAudioTranscriber {
 }
 
 const RUSSIAN_INITIAL_PROMPT =
-  "Напоминание: отправить на проверку СБ ответы, позвонить клиенту, встреча, документы, задача, отчёт, сделать, купить.";
+  "Напоминание: провести собрание, планёрка, созвон, встреча, отправить на проверку СБ ответы, позвонить клиенту, забрать документы, проверить отчёт, в 11:30, в 10:00, завтра, сегодня, сделать, купить.";
 
 /**
  * Cloudflare Workers AI Whisper Transcriber.
@@ -113,7 +114,7 @@ export class ExternalWhisperTranscriber implements IAudioTranscriber {
 }
 
 /**
- * Cleans and formats Russian transcribed text: capitalizes first letter and trims.
+ * Cleans and formats Russian transcribed text: fixes phonetic slips, capitalizes first letter and trims.
  */
 export function cleanTranscribedRussian(rawText: string): string {
   let cleaned = rawText.trim();
@@ -121,6 +122,9 @@ export function cleanTranscribedRussian(rawText: string): string {
 
   // Fix common Whisper leading spaces or dashes
   cleaned = cleaned.replace(/^[-–—\s]+/, "");
+
+  // Apply phonetic and time normalization
+  cleaned = cleanAndNormalizeText(cleaned);
 
   // Capitalize first character
   cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
