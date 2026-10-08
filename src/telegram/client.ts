@@ -101,6 +101,28 @@ export class TelegramClient {
     }
   }
 
+  async editMessageReplyMarkup(
+    chatId: number | string,
+    messageId: number,
+    replyMarkup?: InlineKeyboardMarkup | null
+  ): Promise<boolean> {
+    try {
+      const payload: Record<string, unknown> = {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: replyMarkup ? replyMarkup : { inline_keyboard: [] },
+      };
+      await this.callApi("editMessageReplyMarkup", payload);
+      return true;
+    } catch (err: any) {
+      if (err.message && err.message.includes("message is not modified")) {
+        return true;
+      }
+      logger.warn("editMessageReplyMarkup failed", { error: err.message });
+      return false;
+    }
+  }
+
   async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<boolean> {
     try {
       await this.callApi("answerCallbackQuery", {
