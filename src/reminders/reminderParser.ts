@@ -15,10 +15,19 @@ export function cleanAndNormalizeText(raw: string): string {
   // 1. Normalize time separators: 11-30 -> 11:30, 11—30 -> 11:30
   text = text.replace(/(\d{1,2})[-—](\d{2})/g, "$1:$2");
 
-  // 2. Normalize "в 11 30" -> "в 11:30"
-  text = text.replace(/(?:^|[^а-яёa-z0-9])в\s+(\d{1,2})\s+(\d{2})(?=[^а-яёa-z0-9]|$)/gi, " в $1:$2 ");
+  // 2. Normalize 4-digit time: "1130" or "в 1130" -> "11:30" or "в 11:30"
+  text = text.replace(/(^|[^а-яёa-z0-9])(?:(в)\s+)?([01]\d|2[0-3])([0-5]\d)(?=[^а-яёa-z0-9]|$)(?!\s*(?:год|г\b))/gi, (match, prefix, v, h, m) => {
+    const vPrefix = v ? "в " : "";
+    return `${prefix}${vPrefix}${h}:${m} `;
+  });
 
-  // 3. T9 / Phonetic speech corrections for common reminder actions
+  // 3. Normalize "в 11 30" or "11 30" -> "в 11:30" or "11:30"
+  text = text.replace(/(^|[^а-яёa-z0-9])(?:(в)\s+)?([01]?\d|2[0-3])\s+([0-5]\d)(?=[^а-яёa-z0-9]|$)(?!\s*(?:год|г\b))/gi, (match, prefix, v, h, m) => {
+    const vPrefix = v ? "в " : "";
+    return `${prefix}${vPrefix}${h}:${m} `;
+  });
+
+  // 4. T9 / Phonetic speech corrections for common reminder actions
   text = text.replace(/(?:^|[^а-яёa-z0-9])созвонится(?=[^а-яёa-z0-9]|$)/gi, " созвониться ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])встретится(?=[^а-яёa-z0-9]|$)/gi, " встретиться ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])увидимся(?=[^а-яёa-z0-9]|$)/gi, " увидеться ");
@@ -32,13 +41,21 @@ export function cleanAndNormalizeText(raw: string): string {
   text = text.replace(/(?:^|[^а-яёa-z0-9])написат(?=[^а-яёa-z0-9]|$)/gi, " написать ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])оплатит(?=[^а-яёa-z0-9]|$)/gi, " оплатить ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])подготовит(?=[^а-яёa-z0-9]|$)/gi, " подготовить ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])согласоват(?=[^а-яёa-z0-9]|$)/gi, " согласовать ");
 
-  text = text.replace(/провесли\s+(?:с\s*)?обрань[яе]м?/gi, "провести собрание");
-  text = text.replace(/(?:^|[^а-яёa-z0-9])с\s+обрань[яе]м?(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
-  text = text.replace(/(?:^|[^а-яёa-z0-9])провесли(?=[^а-яёa-z0-9]|$)/gi, " провести ");
-  text = text.replace(/(?:^|[^а-яёa-z0-9])собранье(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
-  text = text.replace(/(?:^|[^а-яёa-z0-9])собранья(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  // Phonetic fixes for "провести собрание" and variations
+  text = text.replace(/(?:^|[^а-яёa-z0-9])(?:провесли|приессе|правести)(?=[^а-яёa-z0-9]|$)/gi, " провести ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])с\s*обрань[яе]м?(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])собрань[яе](?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])собрания(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])сопрани[яе](?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])сопрони(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])соурание[м]?(?=[^а-яёa-z0-9]|$)/gi, " собрание ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])сопрани([а-я]*)(?=[^а-яёa-z0-9]|$)/gi, " собрани$1 ");
 
+  // Business terms
+  text = text.replace(/(?:^|[^а-яёa-z0-9])бродажей(?=[^а-яёa-z0-9]|$)/gi, " продаж ");
+  text = text.replace(/(?:^|[^а-яёa-z0-9])бродаж([а-я]*)(?=[^а-яёa-z0-9]|$)/gi, " продаж$1 ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])отчот([а-я]*)(?=[^а-яёa-z0-9]|$)/gi, " отчёт$1 ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])планерк([а-я]*)(?=[^а-яёa-z0-9]|$)/gi, " планёрк$1 ");
   text = text.replace(/(?:^|[^а-яёa-z0-9])докумет([а-я]*)(?=[^а-яёa-z0-9]|$)/gi, " документ$1 ");
@@ -241,9 +258,9 @@ export function parseReminderText(
     }
   }
 
-  // Pattern 4: "в 11:30", "в 11.30", "в 11-30", "в 18:00", "в 10 утра"
+  // Pattern 4: "в 11:30", "11:30", "в 18:00", "18:00", "в 10 утра"
   if (!targetDate) {
-    const timeOnlyRegex = /(?:^|\s)(в\s+([0-9]{1,2}[:.\-—\s][0-9]{2}(?:\s*(?:утра|вечера|дня|ночи))?|\d{1,2}\s*(?:утра|вечера|дня|ночи)))(?=$|\s|[.,!?;])/i;
+    const timeOnlyRegex = /(?:^|\s)((?:в\s+)?([0-9]{1,2}[:.\-—\s][0-9]{2}(?:\s*(?:утра|вечера|дня|ночи))?|\d{1,2}\s*(?:утра|вечера|дня|ночи)))(?=$|\s|[.,!?;])/i;
     const timeOnlyMatch = lower.match(timeOnlyRegex);
 
     if (timeOnlyMatch && timeOnlyMatch.index !== undefined) {
@@ -295,11 +312,12 @@ export function parseReminderText(
 
   // Clean trigger words anywhere in sentence
   description = description
-    .replace(/(?:^|[^а-яёa-z0-9])(?:поставь|сделай|добавь|установи)\s+(?:мне\s+)?(?:напоминани[ея]|задачу)(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])(?:поставь|поставьте|сделай|сделайте|добавь|добавьте|установи|установите|создай|создайте)\s+(?:мне\s+)?(?:напоминани[ея]|задачу)(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])(?:нужно|надо)\s+напомни(?:ть|те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
     .replace(/(?:^|[^а-яёa-z0-9])напоминани[ея](?=[^а-яёa-z0-9]|$)/gi, " ")
     .replace(/(?:^|[^а-яёa-z0-9])напомни(?:те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
     .replace(/(?:^|[^а-яёa-z0-9])напомнить(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
-    .replace(/(?:^|[^а-яёa-z0-9])не\s+забудь(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
+    .replace(/(?:^|[^а-яёa-z0-9])не\s+забудь(?:те)?(?:\s+мне)?(?=[^а-яёa-z0-9]|$)/gi, " ")
     .replace(/(?:^|[^а-яёa-z0-9])пожалуйста(?=[^а-яёa-z0-9]|$)/gi, " ")
     .replace(/(?:^|[^а-яёa-z0-9])плиз(?=[^а-яёa-z0-9]|$)/gi, " ");
 
@@ -310,7 +328,7 @@ export function parseReminderText(
     .trim();
 
   description = description
-    .replace(/^(?:что|чтобы|о|об|про|в|на|через|к)\s+/i, "")
+    .replace(/^(?:что|чтобы|о|об|про|в|на|через|к|мне)\s+/i, "")
     .replace(/\s+(?:в|на|через|к)$/i, "")
     .trim();
 
