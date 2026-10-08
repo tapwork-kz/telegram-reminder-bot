@@ -91,6 +91,7 @@ export interface TelegramMessage {
   voice?: TelegramVoice;
   audio?: TelegramAudio;
   message_thread_id?: number;
+  reply_to_message?: TelegramMessage;
 }
 
 export interface TelegramCallbackQuery {
