@@ -11,39 +11,70 @@ export interface IAudioTranscriber {
   transcribe(audioBytes: ArrayBuffer, mimeType: string): Promise<TranscriptionResult>;
 }
 
+const RUSSIAN_INITIAL_PROMPT =
+  "Напоминание: отправить на проверку СБ ответы, позвонить клиенту, встреча, документы, задача, отчёт, сделать, купить.";
+
 /**
  * Cloudflare Workers AI Whisper Transcriber.
- * Runs directly on Cloudflare Edge without external network calls or external API keys.
+ * Uses whisper-large-v3-turbo with explicit language="ru" and context prompt for accurate punctuation.
  */
 export class WorkersAiTranscriber implements IAudioTranscriber {
   constructor(private ai: any) {}
 
   async transcribe(audioBytes: ArrayBuffer, mimeType: string): Promise<TranscriptionResult> {
+    const uint8 = new Uint8Array(audioBytes);
+    const audioData = [...uint8];
+
+    // Priority 1: @cf/openai/whisper-large-v3-turbo (greatest accuracy and punctuation for Russian)
     try {
-      const uint8 = new Uint8Array(audioBytes);
-      // Run @cf/openai/whisper model
-      const response = await this.ai.run("@cf/openai/whisper", {
-        audio: [...uint8],
+      const response = await this.ai.run("@cf/openai/whisper-large-v3-turbo", {
+        audio: audioData,
+        language: "ru",
+        task: "transcribe",
+        initial_prompt: RUSSIAN_INITIAL_PROMPT,
+        vad_filter: "true",
       });
 
-      const text = response?.text?.trim() || "";
+      const text = cleanTranscribedRussian(response?.text || "");
+      if (text) {
+        return { text, confidence: 0.98, language: "ru" };
+      }
+    } catch (errLarge) {
+      logger.warn("whisper-large-v3-turbo attempt failed, falling back to base whisper", {
+        error: errLarge instanceof Error ? errLarge.message : String(errLarge),
+      });
+    }
+
+    // Priority 2: Fallback to @cf/openai/whisper with explicit language="ru"
+    try {
+      const response = await this.ai.run("@cf/openai/whisper", {
+        audio: audioData,
+        language: "ru",
+        task: "transcribe",
+        initial_prompt: RUSSIAN_INITIAL_PROMPT,
+      });
+
+      const text = cleanTranscribedRussian(response?.text || "");
       return {
         text,
-        confidence: text ? 0.95 : 0,
+        confidence: text ? 0.9 : 0,
+        language: "ru",
       };
-    } catch (err) {
-      logger.error("WorkersAi transcription failed", err);
-      throw err;
+    } catch (errBase) {
+      logger.error("WorkersAi transcription failed completely", errBase);
+      throw errBase;
     }
   }
 }
 
 /**
- * OpenAI / Groq Compatible External Whisper Transcriber.
- * Used if STT_API_KEY is configured.
+ * External Whisper API (OpenAI / Groq) Transcriber with forced Russian language and prompt.
  */
 export class ExternalWhisperTranscriber implements IAudioTranscriber {
-  constructor(private apiKey: string, private endpoint = "https://api.openai.com/v1/audio/transcriptions") {}
+  constructor(
+    private apiKey: string,
+    private endpoint = "https://api.openai.com/v1/audio/transcriptions"
+  ) {}
 
   async transcribe(audioBytes: ArrayBuffer, mimeType: string): Promise<TranscriptionResult> {
     try {
@@ -52,6 +83,7 @@ export class ExternalWhisperTranscriber implements IAudioTranscriber {
       formData.append("file", blob, "voice.ogg");
       formData.append("model", "whisper-1");
       formData.append("language", "ru");
+      formData.append("prompt", RUSSIAN_INITIAL_PROMPT);
 
       const res = await fetch(this.endpoint, {
         method: "POST",
@@ -67,10 +99,11 @@ export class ExternalWhisperTranscriber implements IAudioTranscriber {
       }
 
       const data = (await res.json()) as { text?: string };
-      const text = data.text?.trim() || "";
+      const text = cleanTranscribedRussian(data.text || "");
       return {
         text,
-        confidence: text ? 0.95 : 0,
+        confidence: text ? 0.98 : 0,
+        language: "ru",
       };
     } catch (err) {
       logger.error("ExternalWhisper transcription failed", err);
@@ -80,8 +113,20 @@ export class ExternalWhisperTranscriber implements IAudioTranscriber {
 }
 
 /**
- * Factory for creating the appropriate AudioTranscriber based on environment bindings.
+ * Cleans and formats Russian transcribed text: capitalizes first letter and trims.
  */
+export function cleanTranscribedRussian(rawText: string): string {
+  let cleaned = rawText.trim();
+  if (!cleaned) return "";
+
+  // Fix common Whisper leading spaces or dashes
+  cleaned = cleaned.replace(/^[-–—\s]+/, "");
+
+  // Capitalize first character
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return cleaned;
+}
+
 export function createAudioTranscriber(env: Env): IAudioTranscriber {
   if (env.STT_API_KEY?.trim()) {
     return new ExternalWhisperTranscriber(env.STT_API_KEY.trim());
@@ -91,12 +136,9 @@ export function createAudioTranscriber(env: Env): IAudioTranscriber {
     return new WorkersAiTranscriber(env.AI);
   }
 
-  throw new Error("No Speech-to-Text provider configured (neither Cloudflare AI binding nor STT_API_KEY is present)");
+  throw new Error("No Speech-to-Text provider configured in Cloudflare environment");
 }
 
-/**
- * Public helper to transcribe audio bytes.
- */
 export async function transcribeAudio(
   audioBytes: ArrayBuffer,
   mimeType: string,
