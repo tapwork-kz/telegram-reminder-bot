@@ -45,13 +45,28 @@ export default {
         return new Response("Bad Request", { status: 400 });
       }
 
-      // Process update in background or directly
+      // Process update immediately
       try {
         const bot = new TelegramBot(env);
-        // Process update immediately
         await bot.handleUpdate(update);
       } catch (err) {
         logger.error("Error processing update", err, { update_id: update?.update_id });
+      }
+
+      // Proactively process any due reminders in background
+      if (env.TELEGRAM_BOT_TOKEN) {
+        ctx.waitUntil(
+          (async () => {
+            try {
+              const repo = new RemindersRepository(env.DB);
+              const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN!);
+              const scheduler = new ReminderScheduler(repo, telegram, env);
+              await scheduler.processDueReminders();
+            } catch (e) {
+              // Ignore background sweep errors
+            }
+          })()
+        );
       }
 
       return new Response("OK", { status: 200 });
@@ -98,19 +113,24 @@ export default {
       return;
     }
 
-    try {
-      const repo = new RemindersRepository(env.DB);
-      const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
-      const scheduler = new ReminderScheduler(repo, telegram, env);
+    const runPromise = (async () => {
+      try {
+        const repo = new RemindersRepository(env.DB);
+        const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN!);
+        const scheduler = new ReminderScheduler(repo, telegram, env);
 
-      const result = await scheduler.processDueReminders();
-      logger.info("Cron execution completed", {
-        processed: result.processedCount,
-        success: result.successCount,
-        failures: result.failureCount,
-      });
-    } catch (err) {
-      logger.error("Fatal error during Cron execution", err);
-    }
+        const result = await scheduler.processDueReminders();
+        logger.info("Cron execution completed", {
+          processed: result.processedCount,
+          success: result.successCount,
+          failures: result.failureCount,
+        });
+      } catch (err) {
+        logger.error("Fatal error during Cron execution", err);
+      }
+    })();
+
+    ctx.waitUntil(runPromise);
+    await runPromise;
   },
 };
