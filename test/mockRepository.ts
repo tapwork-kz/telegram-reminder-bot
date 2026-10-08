@@ -75,13 +75,30 @@ export class MockRemindersRepository {
     return claimed;
   }
 
-  async recordSentNotification(id: number, nextRepeatIso: string): Promise<void> {
+  async recordSentNotification(
+    id: number,
+    nextRepeatIso: string,
+    lastMessageId?: number | null
+  ): Promise<void> {
     const reminder = this.reminders.get(id);
     if (!reminder) return;
     const nowIso = new Date().toISOString();
     reminder.status = "sent";
     reminder.last_sent_at = nowIso;
     reminder.next_repeat_at = nextRepeatIso;
+    if (lastMessageId !== undefined) {
+      reminder.last_message_id = lastMessageId;
+    }
+    reminder.updated_at = nowIso;
+    reminder.claim_token = null;
+    reminder.claim_expires_at = null;
+  }
+
+  async markCancelled(id: number): Promise<void> {
+    const reminder = this.reminders.get(id);
+    if (!reminder) return;
+    const nowIso = new Date().toISOString();
+    reminder.status = "cancelled";
     reminder.updated_at = nowIso;
     reminder.claim_token = null;
     reminder.claim_expires_at = null;
