@@ -1,0 +1,24 @@
+name = "telegram-reminder-bot"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Cron Trigger (runs every minute to check reminders and repeats)
+[triggers]
+crons = ["* * * * *"]
+
+# Cloudflare D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "telegram-reminder-db"
+database_id = "6032986d-c208-49ac-84a0-5eb2fc7861b7"
+
+# Cloudflare Workers AI binding (for native Whisper speech-to-text & LLM)
+[ai]
+binding = "AI"
+
+# Non-sensitive environment variables
+[vars]
+TIMEZONE = "Asia/Almaty"
+DEFAULT_REMINDER_MINUTES = "30"
+REPEAT_INTERVAL_MINUTES = "15"
