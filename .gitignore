@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars
+
+# Build and coverage
+dist/
+coverage/
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
