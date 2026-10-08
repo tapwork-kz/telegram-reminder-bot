@@ -258,4 +258,124 @@ export class RemindersRepository {
       .bind(nowIso, id)
       .first<Reminder>();
   }
+
+  /**
+   * Updates last_message_id for tracking bot messages.
+   */
+  async updateLastMessageId(id: number, messageId: number): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await this.db
+      .prepare("UPDATE reminders SET last_message_id = ?, updated_at = ? WHERE id = ?")
+      .bind(messageId, nowIso, id)
+      .run();
+  }
+
+  /**
+   * Finds a reminder by last_message_id and user ID.
+   */
+  async findByMessageId(messageId: number, userId: number): Promise<Reminder | null> {
+    const res = await this.db
+      .prepare("SELECT * FROM reminders WHERE last_message_id = ? AND telegram_user_id = ? LIMIT 1")
+      .bind(messageId, userId)
+      .first<Reminder>();
+    return res ?? null;
+  }
+
+  /**
+   * Finds a reminder matching a description snippet for a user.
+   */
+  async findByDescriptionMatch(userId: number, snippet: string): Promise<Reminder | null> {
+    const clean = snippet.trim();
+    if (!clean) return null;
+
+    // Search active reminders first
+    const { results } = await this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE telegram_user_id = ?
+           AND status IN ('scheduled', 'sent', 'snoozed')
+         ORDER BY id DESC
+         LIMIT 20`
+      )
+      .bind(userId)
+      .all<Reminder>();
+
+    if (results && results.length > 0) {
+      const match = results.find(
+        (r) =>
+          r.description.toLowerCase() === clean.toLowerCase() ||
+          r.description.toLowerCase().includes(clean.toLowerCase()) ||
+          clean.toLowerCase().includes(r.description.toLowerCase())
+      );
+      if (match) return match;
+    }
+
+    // Fallback: search recent reminders of any status
+    const latest = await this.db
+      .prepare(
+        `SELECT * FROM reminders
+         WHERE telegram_user_id = ?
+         ORDER BY id DESC
+         LIMIT 10`
+      )
+      .bind(userId)
+      .all<Reminder>();
+
+    if (latest.results && latest.results.length > 0) {
+      const match = latest.results.find(
+        (r) =>
+          r.description.toLowerCase() === clean.toLowerCase() ||
+          r.description.toLowerCase().includes(clean.toLowerCase()) ||
+          clean.toLowerCase().includes(r.description.toLowerCase())
+      );
+      if (match) return match;
+    }
+
+    return null;
+  }
+
+  /**
+   * Supplements an existing reminder with updated description, time, and status.
+   */
+  async supplement(
+    id: number,
+    newDescription: string,
+    newRemindAtIso?: string,
+    newStatus?: ReminderStatus
+  ): Promise<Reminder> {
+    const nowIso = new Date().toISOString();
+    if (newRemindAtIso) {
+      const res = await this.db
+        .prepare(
+          `UPDATE reminders
+           SET description = ?,
+               remind_at = ?,
+               status = COALESCE(?, status),
+               updated_at = ?,
+               next_repeat_at = NULL,
+               claim_token = NULL,
+               claim_expires_at = NULL
+           WHERE id = ?
+           RETURNING *`
+        )
+        .bind(newDescription, newRemindAtIso, newStatus ?? "scheduled", nowIso, id)
+        .first<Reminder>();
+      if (!res) throw new Error("Failed to supplement reminder");
+      return res;
+    } else {
+      const res = await this.db
+        .prepare(
+          `UPDATE reminders
+           SET description = ?,
+               status = COALESCE(?, status),
+               updated_at = ?
+           WHERE id = ?
+           RETURNING *`
+        )
+        .bind(newDescription, newStatus ?? null, nowIso, id)
+        .first<Reminder>();
+      if (!res) throw new Error("Failed to supplement reminder");
+      return res;
+    }
+  }
 }
