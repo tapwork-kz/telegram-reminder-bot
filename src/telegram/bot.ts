@@ -6,6 +6,8 @@ import { isUserAllowed, getTimezone } from "../config";
 import { formatForUser } from "../utils/dates";
 import { Env, TelegramUpdate, TelegramMessage } from "../types";
 import { logger } from "../utils/logger";
+import { extractDescriptionFromBotMessage } from "../reminders/reminderParser";
+import { transcribeAudio } from "../voice/transcription";
 
 export class TelegramBot {
   private client: TelegramClient;
@@ -64,6 +66,12 @@ export class TelegramBot {
     if (text.startsWith("/")) {
       await this.handleCommand(text, msg);
       return;
+    }
+
+    // Check if this is a reply to a previous message (Supplementing Reminders)
+    if (msg.reply_to_message) {
+      const handled = await this.handleReplyMessage(msg);
+      if (handled) return;
     }
 
     // Voice message handling (Section 8)
@@ -204,9 +212,13 @@ export class TelegramBot {
 
     try {
       const res = await this.service.createFromText(text, userId, chatId, threadId);
-      await this.client.sendMessage(chatId, res.messageText, {
+      const sent = await this.client.sendMessage(chatId, res.messageText, {
         message_thread_id: threadId,
       });
+
+      if (res.reminder && sent?.message_id) {
+        await this.repo.updateLastMessageId(res.reminder.id, sent.message_id);
+      }
     } catch (err: any) {
       logger.error("Error creating reminder from text", err, { user_id: userId });
       await this.client.sendMessage(chatId, "Произошла ошибка при создании напоминания. Попробуйте ещё раз.", {
@@ -257,9 +269,13 @@ export class TelegramBot {
         threadId
       );
 
-      await this.client.sendMessage(chatId, res.messageText, {
+      const sent = await this.client.sendMessage(chatId, res.messageText, {
         message_thread_id: threadId,
       });
+
+      if (res.reminder && sent?.message_id) {
+        await this.repo.updateLastMessageId(res.reminder.id, sent.message_id);
+      }
     } catch (err: any) {
       logger.error("Error processing voice message", err, { user_id: userId });
       await this.client.sendMessage(
@@ -267,6 +283,81 @@ export class TelegramBot {
         "⚠️ Не удалось обработать голосовое сообщение. Попробуйте отправить текстом.",
         { message_thread_id: threadId }
       );
+    }
+  }
+
+  private async handleReplyMessage(msg: TelegramMessage): Promise<boolean> {
+    const fromUser = msg.from;
+    const chatId = msg.chat.id;
+    const threadId = msg.message_thread_id;
+    const replyTo = msg.reply_to_message;
+
+    if (!fromUser || !replyTo) return false;
+
+    // 1. Extract content from the reply (text or voice)
+    let replyContent = msg.text?.trim() || "";
+
+    const voiceOrAudio = msg.voice || msg.audio;
+    if (voiceOrAudio && !replyContent) {
+      try {
+        const fileInfo = await this.client.getFile(voiceOrAudio.file_id);
+        if (fileInfo.file_path) {
+          const audioBytes = await this.client.downloadFile(fileInfo.file_path);
+          const transcription = await transcribeAudio(
+            audioBytes,
+            voiceOrAudio.mime_type || "audio/ogg",
+            this.env
+          );
+          replyContent = transcription.text.trim();
+        }
+      } catch (err) {
+        logger.error("Failed to transcribe reply voice", err);
+      }
+    }
+
+    if (!replyContent) return false;
+
+    // 2. Locate target reminder:
+    // A) By reply_to_message.message_id
+    let targetReminder = await this.repo.findByMessageId(replyTo.message_id, fromUser.id);
+
+    // B) Fallback: match by description snippet from reply_to.text
+    if (!targetReminder && replyTo.text) {
+      const snippet = extractDescriptionFromBotMessage(replyTo.text);
+      if (snippet) {
+        targetReminder = await this.repo.findByDescriptionMatch(fromUser.id, snippet);
+      }
+    }
+
+    // C) Fallback: if only one active reminder exists for user
+    if (!targetReminder && replyTo.text) {
+      const activeList = await this.repo.getActiveForUser(fromUser.id);
+      if (activeList.length === 1) {
+        targetReminder = activeList[0];
+      }
+    }
+
+    if (!targetReminder) {
+      return false; // Not a recognized reminder reply -> let standard handler process it
+    }
+
+    // 3. Supplement reminder
+    try {
+      const res = await this.service.supplementReminder(targetReminder, replyContent);
+      const sent = await this.client.sendMessage(chatId, res.messageText, {
+        message_thread_id: threadId,
+      });
+
+      if (sent?.message_id) {
+        await this.repo.updateLastMessageId(targetReminder.id, sent.message_id);
+      }
+      return true;
+    } catch (err: any) {
+      logger.error("Error supplementing reminder", err, { reminder_id: targetReminder.id });
+      await this.client.sendMessage(chatId, "⚠️ Не удалось дополнить напоминание. Попробуйте ещё раз.", {
+        message_thread_id: threadId,
+      });
+      return true;
     }
   }
 }
