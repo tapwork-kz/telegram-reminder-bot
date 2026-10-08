@@ -43,6 +43,7 @@ export class CallbackHandler {
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
         reply_markup: { inline_keyboard: [] },
       });
+      await this.telegram.editMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] });
       return;
     }
 
@@ -62,6 +63,7 @@ export class CallbackHandler {
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
         reply_markup: { inline_keyboard: [] },
       });
+      await this.telegram.editMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] });
       return;
     }
 
@@ -118,6 +120,7 @@ export class CallbackHandler {
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
         reply_markup: { inline_keyboard: [] },
       });
+      await this.telegram.editMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] });
       return;
     }
 
