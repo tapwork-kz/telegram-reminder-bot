@@ -122,20 +122,43 @@ export class RemindersRepository {
   /**
    * Update reminder state after sending notification to user.
    */
-  async recordSentNotification(id: number, nextRepeatIso: string): Promise<void> {
+  async recordSentNotification(
+    id: number,
+    nextRepeatIso: string,
+    lastMessageId?: number | null
+  ): Promise<void> {
     const nowIso = new Date().toISOString();
     await this.db
       .prepare(
         `UPDATE reminders
          SET status = 'sent',
              last_sent_at = ?,
+             last_message_id = COALESCE(?, last_message_id),
              next_repeat_at = ?,
              updated_at = ?,
              claim_token = NULL,
              claim_expires_at = NULL
          WHERE id = ?`
       )
-      .bind(nowIso, nextRepeatIso, nowIso, id)
+      .bind(nowIso, lastMessageId ?? null, nextRepeatIso, nowIso, id)
+      .run();
+  }
+
+  /**
+   * Mark reminder as cancelled when chat is invalid or bot is blocked.
+   */
+  async markCancelled(id: number): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await this.db
+      .prepare(
+        `UPDATE reminders
+         SET status = 'cancelled',
+             updated_at = ?,
+             claim_token = NULL,
+             claim_expires_at = NULL
+         WHERE id = ?`
+      )
+      .bind(nowIso, id)
       .run();
   }
 
