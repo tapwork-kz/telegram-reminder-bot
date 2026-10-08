@@ -21,6 +21,7 @@ describe("Reminder Scheduler & Lifecycle", () => {
         return { message_id: 100 + sentMessages.length };
       }),
       editMessageText: vi.fn(async () => true),
+      editMessageReplyMarkup: vi.fn(async () => true),
       answerCallbackQuery: vi.fn(async () => true),
     } as unknown as TelegramClient;
 
