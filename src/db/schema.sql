@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     updated_at TEXT NOT NULL,
     completed_at TEXT,
     last_sent_at TEXT,
+    last_message_id INTEGER,
     claim_token TEXT,
     claim_expires_at TEXT
 );
