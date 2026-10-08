@@ -25,6 +25,7 @@ export interface Reminder {
   updated_at: string;
   completed_at?: string | null;
   last_sent_at?: string | null;
+  last_message_id?: number | null;
   claim_token?: string | null;
   claim_expires_at?: string | null;
 }
