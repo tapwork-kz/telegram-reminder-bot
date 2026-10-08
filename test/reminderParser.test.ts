@@ -112,4 +112,38 @@ describe("Reminder Parser", () => {
     expect(targetParts.hour).toBe(11);
     expect(targetParts.minute).toBe(30);
   });
+
+  it("should extract description without trigger words for 'в 11:30 напомни сделать что то'", () => {
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("в 11:30 напомни сделать что то", nightTime, timeZone);
+    expect(result.description).toBe("Сделать что то");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9);
+    expect(targetParts.hour).toBe(11);
+    expect(targetParts.minute).toBe(30);
+  });
+
+  it("should strip complex triggers: 'поставь напоминание на завтра в 10:00 забрать документы'", () => {
+    const nightTime = new Date("2026-10-08T18:08:00.000Z");
+    const result = parseReminderText("поставь напоминание на завтра в 10:00 забрать документы", nightTime, timeZone);
+    expect(result.description).toBe("Забрать документы");
+    expect(result.hasExplicitTime).toBe(true);
+
+    const targetParts = getZonedParts(new Date(result.remindAtUtcIso), timeZone);
+    expect(targetParts.day).toBe(9);
+    expect(targetParts.hour).toBe(10);
+    expect(targetParts.minute).toBe(0);
+  });
+
+  it("should apply T9 autocorrect for 'созвонится по поводу отчота'", () => {
+    const result = parseReminderText("созвонится по поводу отчота", baseTime, timeZone);
+    expect(result.description).toBe("Созвониться по поводу отчёта");
+  });
+
+  it("should apply T9 autocorrect for 'купит продукты'", () => {
+    const result = parseReminderText("купит продукты", baseTime, timeZone);
+    expect(result.description).toBe("Купить продукты");
+  });
 });
