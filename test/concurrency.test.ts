@@ -22,6 +22,7 @@ describe("Concurrency and Independence", () => {
         return { message_id: Math.floor(Math.random() * 100000) };
       }),
       editMessageText: vi.fn(async () => true),
+      editMessageReplyMarkup: vi.fn(async () => true),
       answerCallbackQuery: vi.fn(async () => true),
     } as unknown as TelegramClient;
 
