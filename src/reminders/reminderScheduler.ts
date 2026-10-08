@@ -24,6 +24,8 @@ export class ReminderScheduler {
   async processDueReminders(limit: number = 25): Promise<SchedulerRunResult> {
     const now = new Date();
     const nowIso = now.toISOString();
+    // 30s buffer so reminders due within the current minute are claimed immediately
+    const checkTimeIso = new Date(now.getTime() + 30 * 1000).toISOString();
 
     // Generate unique claim token for this cron batch
     const claimToken = `cron-${now.getTime()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -34,7 +36,7 @@ export class ReminderScheduler {
     let claimedReminders: Reminder[] = [];
     try {
       claimedReminders = await this.repo.claimDueReminders(
-        nowIso,
+        checkTimeIso,
         claimToken,
         claimExpiresIso,
         limit
@@ -63,18 +65,35 @@ export class ReminderScheduler {
       try {
         await this.processSingleReminder(reminder, repeatIntervalMinutes);
         successCount++;
-      } catch (err) {
+      } catch (err: any) {
         failureCount++;
+        const errMsg = err?.message || String(err);
         logger.error("Failed to process reminder", err, {
           reminder_id: reminder.id,
+          error: errMsg,
         });
-        // Safely release claim so it can be retried
-        try {
-          await this.repo.releaseClaim(reminder.id);
-        } catch (releaseErr) {
-          logger.error("Failed to release claim for reminder", releaseErr, {
-            reminder_id: reminder.id,
-          });
+
+        // If permanent Telegram delivery failure, mark cancelled to prevent infinite blocking
+        if (
+          errMsg.includes("chat not found") ||
+          errMsg.includes("bot was blocked") ||
+          errMsg.includes("user is deactivated")
+        ) {
+          logger.warn("Permanent delivery failure, cancelling reminder", { reminder_id: reminder.id });
+          try {
+            await this.repo.markCancelled(reminder.id);
+          } catch (cancelErr) {
+            logger.error("Failed to mark reminder cancelled", cancelErr);
+          }
+        } else {
+          // Safely release claim so it can be retried
+          try {
+            await this.repo.releaseClaim(reminder.id);
+          } catch (releaseErr) {
+            logger.error("Failed to release claim for reminder", releaseErr, {
+              reminder_id: reminder.id,
+            });
+          }
         }
       }
     }
@@ -92,14 +111,30 @@ export class ReminderScheduler {
   ): Promise<void> {
     const isRepeat = reminder.status === "sent";
 
-    // Text formatting according to specification (Section 11, 20, 38)
+    // Requirement: Hide inline keyboard on the previous notification message if a fresh one is being sent
+    if (reminder.last_message_id) {
+      try {
+        await this.telegram.editMessageReplyMarkup(
+          reminder.telegram_chat_id,
+          reminder.last_message_id,
+          null
+        );
+      } catch (markupErr) {
+        logger.warn("Failed to remove old inline markup", {
+          reminder_id: reminder.id,
+          old_message_id: reminder.last_message_id,
+        });
+      }
+    }
+
+    // Text formatting according to specification
     const timeLabel = isRepeat ? "⏰ Я всё ещё жду выполнения" : "⏰ Сейчас";
     const text = `🔔 Напоминание\n${reminder.description}\n${timeLabel}`;
 
     const keyboard = getReminderActionsKeyboard(reminder.id);
 
     // Send Telegram message
-    await this.telegram.sendMessage(reminder.telegram_chat_id, text, {
+    const sent = await this.telegram.sendMessage(reminder.telegram_chat_id, text, {
       reply_markup: keyboard,
       message_thread_id: reminder.telegram_message_thread_id,
     });
@@ -108,13 +143,14 @@ export class ReminderScheduler {
     const nextRepeatDate = new Date(Date.now() + repeatIntervalMinutes * 60 * 1000);
     const nextRepeatIso = nextRepeatDate.toISOString();
 
-    // Atomically transition state and record repeat
-    await this.repo.recordSentNotification(reminder.id, nextRepeatIso);
+    // Atomically transition state and record new message_id
+    await this.repo.recordSentNotification(reminder.id, nextRepeatIso, sent.message_id);
 
     logger.info("Reminder notification sent successfully", {
       reminder_id: reminder.id,
       is_repeat: isRepeat,
       next_repeat_at: nextRepeatIso,
+      new_message_id: sent.message_id,
     });
   }
 }
