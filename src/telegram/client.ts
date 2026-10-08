@@ -83,7 +83,7 @@ export class TelegramClient {
       };
 
       if (options?.reply_markup !== undefined) {
-        payload.reply_markup = options.reply_markup;
+        payload.reply_markup = options.reply_markup === null ? { inline_keyboard: [] } : options.reply_markup;
       }
       if (options?.parse_mode) {
         payload.parse_mode = options.parse_mode;
@@ -110,7 +110,7 @@ export class TelegramClient {
       const payload: Record<string, unknown> = {
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: replyMarkup ? replyMarkup : { inline_keyboard: [] },
+        reply_markup: !replyMarkup ? { inline_keyboard: [] } : replyMarkup,
       };
       await this.callApi("editMessageReplyMarkup", payload);
       return true;
