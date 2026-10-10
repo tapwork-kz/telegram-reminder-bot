@@ -169,4 +169,40 @@ export class TelegramClient {
   async deleteWebhook(): Promise<boolean> {
     return await this.callApi<boolean>("deleteWebhook");
   }
+
+  async deleteMessage(chatId: number | string, messageId: number): Promise<boolean> {
+    try {
+      await this.callApi("deleteMessage", {
+        chat_id: chatId,
+        message_id: messageId,
+      });
+      return true;
+    } catch (err: any) {
+      if (
+        err.message &&
+        (err.message.includes("message to delete not found") ||
+          err.message.includes("message can't be deleted"))
+      ) {
+        return true;
+      }
+      logger.warn("deleteMessage failed", {
+        error: err.message,
+        chat_id: chatId,
+        message_id: messageId,
+      });
+      return false;
+    }
+  }
+
+  async setMyCommands(
+    commands: Array<{ command: string; description: string }>
+  ): Promise<boolean> {
+    try {
+      await this.callApi("setMyCommands", { commands });
+      return true;
+    } catch (err: any) {
+      logger.warn("setMyCommands failed", { error: err.message });
+      return false;
+    }
+  }
 }
