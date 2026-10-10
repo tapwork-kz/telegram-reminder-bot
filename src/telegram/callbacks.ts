@@ -37,9 +37,10 @@ export class CallbackHandler {
       }
 
       await this.service.markCompleted(id);
-      await this.telegram.answerCallbackQuery(callbackId, "Отлично! Отмечено выполненным.");
+      await this.telegram.answerCallbackQuery(callbackId, "Отлично! Выполнено.");
 
-      const updatedText = `✅ Выполнено\n${reminder.description}`;
+      // In history, only completed reminders remain
+      const updatedText = `✅ ${reminder.description}`;
       await this.telegram.editMessageText(chatId, messageId, updatedText, {
         reply_markup: { inline_keyboard: [] },
       });
@@ -57,13 +58,8 @@ export class CallbackHandler {
       }
 
       await this.service.markIrrelevant(id);
-      await this.telegram.answerCallbackQuery(callbackId, "Закрыто как неактуальное.");
-
-      const updatedText = `❌ Напоминание закрыто как неактуальное.\n${reminder.description}`;
-      await this.telegram.editMessageText(chatId, messageId, updatedText, {
-        reply_markup: { inline_keyboard: [] },
-      });
-      await this.telegram.editMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] });
+      await this.telegram.answerCallbackQuery(callbackId, "Закрыто.");
+      await this.telegram.deleteMessage(chatId, messageId);
       return;
     }
 
@@ -77,7 +73,7 @@ export class CallbackHandler {
       }
 
       await this.telegram.answerCallbackQuery(callbackId);
-      const promptText = `🔔 Напоминание\n${reminder.description}\n\nВыберите время, на которое отложить:`;
+      const promptText = `${reminder.description}\n\nВыберите время, на которое отложить:`;
       await this.telegram.editMessageText(chatId, messageId, promptText, {
         reply_markup: getSnoozeOptionsKeyboard(id),
       });
@@ -94,7 +90,7 @@ export class CallbackHandler {
       }
 
       await this.telegram.answerCallbackQuery(callbackId);
-      const originalText = `🔔 Напоминание\n${reminder.description}\n⏰ ${reminder.status === "sent" ? "Я всё ещё жду выполнения" : "Сейчас"}`;
+      const originalText = `${reminder.description}\n⏰ ${reminder.status === "sent" ? "Я всё ещё жду выполнения" : "Сейчас"}`;
       await this.telegram.editMessageText(chatId, messageId, originalText, {
         reply_markup: getReminderActionsKeyboard(id),
       });
@@ -116,11 +112,8 @@ export class CallbackHandler {
       const { displayTime } = await this.service.snooze(id, snoozeType);
       await this.telegram.answerCallbackQuery(callbackId, `Отложено до: ${displayTime}`);
 
-      const updatedText = `⏰ Отложено\n${reminder.description}\n⏰ ${displayTime}`;
-      await this.telegram.editMessageText(chatId, messageId, updatedText, {
-        reply_markup: { inline_keyboard: [] },
-      });
-      await this.telegram.editMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] });
+      // Requirement 3: Snoozed reminder messages are deleted from chat to prevent clutter
+      await this.telegram.deleteMessage(chatId, messageId);
       return;
     }
 
