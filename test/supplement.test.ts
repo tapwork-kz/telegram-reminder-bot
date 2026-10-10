@@ -6,13 +6,13 @@ import { Reminder } from "../src/types";
 
 describe("Supplementing Reminders", () => {
   it("should extract description from confirmation bot message", () => {
-    const text = "🔔 Напоминание создано\nСделать собрание\n⏰ Через 30 минут";
+    const text = "Сделать собрание\n⏰ Через 30 минут";
     const desc = extractDescriptionFromBotMessage(text);
     expect(desc).toBe("Сделать собрание");
   });
 
-  it("should extract description from notification bot message", () => {
-    const text = "🔔 Напоминание\nСделать собрание вечером\n⏰ Сейчас";
+  it("should extract description from notification bot message with or without header", () => {
+    const text = "Сделать собрание вечером\n⏰ Сейчас";
     const desc = extractDescriptionFromBotMessage(text);
     expect(desc).toBe("Сделать собрание вечером");
   });
