@@ -9,6 +9,13 @@ import { logger } from "../utils/logger";
 import { extractDescriptionFromBotMessage } from "../reminders/reminderParser";
 import { transcribeAudio } from "../voice/transcription";
 
+export const BOT_COMMANDS = [
+  { command: "reminders", description: "Активные напоминания" },
+  { command: "today", description: "Напоминания на сегодня" },
+  { command: "help", description: "Справка по боту" },
+  { command: "start", description: "Запустить бота" },
+];
+
 export class TelegramBot {
   private client: TelegramClient;
   private repo: RemindersRepository;
@@ -95,6 +102,7 @@ export class TelegramBot {
 
     switch (command) {
       case "/start": {
+        await this.client.setMyCommands(BOT_COMMANDS);
         const welcome =
           `👋 Привет! Я твой персональный бот напоминаний.\n\n` +
           `Отправь мне текст или голосовое сообщение, например:\n` +
