@@ -111,25 +111,24 @@ export class ReminderScheduler {
   ): Promise<void> {
     const isRepeat = reminder.status === "sent";
 
-    // Requirement: Hide inline keyboard on the previous notification message if a fresh one is being sent
+    // Requirement 3: Delete previous notification/confirmation message so chat isn't cluttered
     if (reminder.last_message_id) {
       try {
-        await this.telegram.editMessageReplyMarkup(
+        await this.telegram.deleteMessage(
           reminder.telegram_chat_id,
-          reminder.last_message_id,
-          null
+          reminder.last_message_id
         );
-      } catch (markupErr) {
-        logger.warn("Failed to remove old inline markup", {
+      } catch (delErr) {
+        logger.warn("Failed to delete previous reminder notification message", {
           reminder_id: reminder.id,
           old_message_id: reminder.last_message_id,
         });
       }
     }
 
-    // Text formatting according to specification
+    // Text formatting: Clean text without '🔔 Напоминание' header
     const timeLabel = isRepeat ? "⏰ Я всё ещё жду выполнения" : "⏰ Сейчас";
-    const text = `🔔 Напоминание\n${reminder.description}\n${timeLabel}`;
+    const text = `${reminder.description}\n${timeLabel}`;
 
     const keyboard = getReminderActionsKeyboard(reminder.id);
 
