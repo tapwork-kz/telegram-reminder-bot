@@ -60,7 +60,7 @@ export class ReminderService {
     });
 
     const displayTime = formatForUser(parsed.remindAtUtcIso, now, timeZone);
-    const responseText = `🔔 Напоминание создано\n${reminder.description}\n⏰ ${displayTime}`;
+    const responseText = `${reminder.description}\n⏰ ${displayTime}`;
 
     logger.info("Reminder created from text", {
       reminder_id: reminder.id,
@@ -105,7 +105,7 @@ export class ReminderService {
     if (parsed.isPast) {
       return {
         reminder: null,
-        messageText: `🎤 Я распознал: «${recognizedText}»\n⚠️ Указанное время уже прошло.`,
+        messageText: `🎤 «${recognizedText}»\n⚠️ Указанное время уже прошло.`,
         isPast: true,
       };
     }
@@ -121,7 +121,7 @@ export class ReminderService {
     });
 
     const displayTime = formatForUser(parsed.remindAtUtcIso, now, timeZone);
-    const responseText = `🎤 Распознано: «${recognizedText}»\n\n🔔 Напоминание создано\n${reminder.description}\n⏰ ${displayTime}`;
+    const responseText = `🎤 «${recognizedText}»\n\n${reminder.description}\n⏰ ${displayTime}`;
 
     logger.info("Reminder created from voice", {
       reminder_id: reminder.id,
