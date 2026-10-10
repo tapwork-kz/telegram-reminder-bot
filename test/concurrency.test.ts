@@ -23,6 +23,7 @@ describe("Concurrency and Independence", () => {
       }),
       editMessageText: vi.fn(async () => true),
       editMessageReplyMarkup: vi.fn(async () => true),
+      deleteMessage: vi.fn(async () => true),
       answerCallbackQuery: vi.fn(async () => true),
     } as unknown as TelegramClient;
 
