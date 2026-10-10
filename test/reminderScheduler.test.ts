@@ -22,6 +22,7 @@ describe("Reminder Scheduler & Lifecycle", () => {
       }),
       editMessageText: vi.fn(async () => true),
       editMessageReplyMarkup: vi.fn(async () => true),
+      deleteMessage: vi.fn(async () => true),
       answerCallbackQuery: vi.fn(async () => true),
     } as unknown as TelegramClient;
 
@@ -50,7 +51,7 @@ describe("Reminder Scheduler & Lifecycle", () => {
     expect(res.processedCount).toBe(1);
     expect(res.successCount).toBe(1);
     expect(sentMessages.length).toBe(1);
-    expect(sentMessages[0].text).toContain("🔔 Напоминание");
+    expect(sentMessages[0].text).not.toContain("🔔 Напоминание");
     expect(sentMessages[0].text).toContain("Позвонить клиенту");
     expect(sentMessages[0].text).toContain("⏰ Сейчас");
 
@@ -60,7 +61,7 @@ describe("Reminder Scheduler & Lifecycle", () => {
     expect(updated?.next_repeat_at).toBeDefined();
   });
 
-  it("should repeat notification after 15 minutes if not completed", async () => {
+  it("should repeat notification after 15 minutes if not completed and delete old message", async () => {
     const scheduler = new ReminderScheduler(mockRepo as any, mockTelegram, env);
 
     // Create a reminder that was already sent 16 minutes ago
@@ -72,18 +73,20 @@ describe("Reminder Scheduler & Lifecycle", () => {
       remind_at: new Date(Date.now() - 30 * 60000).toISOString(),
     });
 
-    // Mark it as sent with next_repeat_at 1 minute in the past
+    // Mark it as sent with next_repeat_at 1 minute in the past and last_message_id = 99
     await mockRepo.recordSentNotification(
       reminder.id,
-      new Date(Date.now() - 60000).toISOString()
+      new Date(Date.now() - 60000).toISOString(),
+      99
     );
 
     const res = await scheduler.processDueReminders();
     expect(res.processedCount).toBe(1);
     expect(sentMessages.length).toBe(1);
-    expect(sentMessages[0].text).toContain("🔔 Напоминание");
+    expect(sentMessages[0].text).not.toContain("🔔 Напоминание");
     expect(sentMessages[0].text).toContain("Купить молоко");
     expect(sentMessages[0].text).toContain("⏰ Я всё ещё жду выполнения");
+    expect(mockTelegram.deleteMessage).toHaveBeenCalledWith(222, 99);
 
     // The single record should be updated with a new next_repeat_at, NOT duplicated
     expect(mockRepo.reminders.size).toBe(1);
