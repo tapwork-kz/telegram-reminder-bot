@@ -16,8 +16,49 @@ const RUSSIAN_INITIAL_PROMPT =
   "Напоминание: провести собрание, планёрка, созвон, встреча, отправить на проверку СБ ответы, позвонить клиенту, забрать документы, проверить отчёт, в 11:30, в 10:00, завтра, сегодня, сделать, купить.";
 
 /**
+ * Uses Cloudflare Workers AI LLM to reconstruct words, sentences, proper punctuation, and acronyms.
+ */
+export async function refineTranscriptionWithAi(rawText: string, ai: any): Promise<string> {
+  const trimmed = rawText.trim();
+  if (!trimmed || !ai) return trimmed;
+
+  try {
+    const prompt = `Ты корректор распознавания русской речи в Telegram-боте напоминаний.
+Пользователь надиктовал напоминание голосом. Исправь фонетические искажения, опечатки, слова и расставь правильные знаки препинания.
+
+Примеры:
+- "В 11-30, напомни, провесли с обраньям." -> "В 11:30, напомни, провести собрание."
+- "1130 провести сопрания по уценке бродажей" -> "В 11:30 провести собрание по уценке продаж."
+- "отправить на проверку сб ответы" -> "Отправить на проверку СБ ответы."
+- "созвонится по поводу отчота" -> "Созвониться по поводу отчёта."
+- "завтра в 10 утра забрать документы" -> "Завтра в 10 утра забрать документы."
+
+Исправь следующий распознанный текст. Выведи ТОЛЬКО готовое исправленное предложение без кавычек, пояснений и комментариев:
+${trimmed}`;
+
+    const res = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+      prompt,
+      max_tokens: 150,
+      temperature: 0.1,
+    });
+
+    const reply = (res?.response || res?.text || "").trim();
+    if (reply && reply.length > 0 && !reply.toLowerCase().includes("исправленный текст")) {
+      const cleanedReply = reply.replace(/^["'«]+/, "").replace(/["'»]+$/, "").trim();
+      if (cleanedReply.length > 0) {
+        return cleanedReply;
+      }
+    }
+  } catch (err: any) {
+    logger.warn("AI speech refinement skipped", { error: err.message });
+  }
+
+  return trimmed;
+}
+
+/**
  * Cloudflare Workers AI Whisper Transcriber.
- * Uses whisper-large-v3-turbo with explicit language="ru" and context prompt for accurate punctuation.
+ * Uses Whisper + Llama LLM post-processing for high accuracy Russian speech recognition.
  */
 export class WorkersAiTranscriber implements IAudioTranscriber {
   constructor(private ai: any) {}
@@ -25,6 +66,7 @@ export class WorkersAiTranscriber implements IAudioTranscriber {
   async transcribe(audioBytes: ArrayBuffer, mimeType: string): Promise<TranscriptionResult> {
     const uint8 = new Uint8Array(audioBytes);
     const audioData = [...uint8];
+    let rawText = "";
 
     // Priority 1: @cf/openai/whisper-large-v3-turbo (greatest accuracy and punctuation for Russian)
     try {
@@ -33,13 +75,11 @@ export class WorkersAiTranscriber implements IAudioTranscriber {
         language: "ru",
         task: "transcribe",
         initial_prompt: RUSSIAN_INITIAL_PROMPT,
-        vad_filter: "true",
+        vad_filter: true,
+        beam_size: 5,
       });
 
-      const text = cleanTranscribedRussian(response?.text || "");
-      if (text) {
-        return { text, confidence: 0.98, language: "ru" };
-      }
+      rawText = response?.text || "";
     } catch (errLarge) {
       logger.warn("whisper-large-v3-turbo attempt failed, falling back to base whisper", {
         error: errLarge instanceof Error ? errLarge.message : String(errLarge),
@@ -47,24 +87,36 @@ export class WorkersAiTranscriber implements IAudioTranscriber {
     }
 
     // Priority 2: Fallback to @cf/openai/whisper with explicit language="ru"
-    try {
-      const response = await this.ai.run("@cf/openai/whisper", {
-        audio: audioData,
-        language: "ru",
-        task: "transcribe",
-        initial_prompt: RUSSIAN_INITIAL_PROMPT,
-      });
+    if (!rawText) {
+      try {
+        const response = await this.ai.run("@cf/openai/whisper", {
+          audio: audioData,
+          language: "ru",
+          task: "transcribe",
+          initial_prompt: RUSSIAN_INITIAL_PROMPT,
+          vad_filter: true,
+        });
 
-      const text = cleanTranscribedRussian(response?.text || "");
-      return {
-        text,
-        confidence: text ? 0.9 : 0,
-        language: "ru",
-      };
-    } catch (errBase) {
-      logger.error("WorkersAi transcription failed completely", errBase);
-      throw errBase;
+        rawText = response?.text || "";
+      } catch (errBase) {
+        logger.error("WorkersAi transcription failed completely", errBase);
+        throw errBase;
+      }
     }
+
+    if (!rawText) {
+      return { text: "", confidence: 0, language: "ru" };
+    }
+
+    // Refine words, sentences and punctuation with Workers AI LLM
+    const refined = await refineTranscriptionWithAi(rawText, this.ai);
+    const cleaned = cleanTranscribedRussian(refined);
+
+    return {
+      text: cleaned,
+      confidence: 0.98,
+      language: "ru",
+    };
   }
 }
 
