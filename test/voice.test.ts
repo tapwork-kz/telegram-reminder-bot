@@ -33,8 +33,8 @@ describe("Voice Processing Pipeline", () => {
 
     expect(result.reminder).not.toBeNull();
     expect(result.reminder?.source_type).toBe("voice");
-    expect(result.reminder?.description).toBe("Забрать документы");
-    expect(result.messageText).toContain("🎤 Распознано: «Завтра в 10 утра забрать документы»");
-    expect(result.messageText).toContain("🔔 Напоминание создано");
+    expect(result.messageText).toContain("🎤 «Завтра в 10 утра забрать документы»");
+    expect(result.messageText).toContain("Забрать документы");
+    expect(result.messageText).not.toContain("🔔 Напоминание");
   });
 });
